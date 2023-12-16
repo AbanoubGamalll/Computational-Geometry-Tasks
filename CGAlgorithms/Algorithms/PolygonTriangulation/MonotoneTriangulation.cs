@@ -1,17 +1,84 @@
-﻿using System.Linq;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using CGUtilities;
 
 namespace CGAlgorithms.Algorithms.PolygonTriangulation
 {
-    class InsertingDiagonals : Algorithm
+    class MonotoneTriangulation : Algorithm
     {
-        public override void Run(List<CGUtilities.Point> points, List<CGUtilities.Line> lines, List<CGUtilities.Polygon> polygons, ref List<CGUtilities.Point> outPoints, ref List<CGUtilities.Line> outLines, ref List<CGUtilities.Polygon> outPolygons)
+        public override void Run(List<Point> points, List<Line> lines, List<Polygon> polygons, ref List<Point> outPoints, ref List<Line> outLines, ref List<Polygon> outPolygons)
         {
-            Polygon polygon = new Polygon(lines);
-            polygon = CounterClockwise(polygon);
-            outLines = Inserting_Diagonals(polygon);
+            Polygon pol = new Polygon(lines);
+            pol = CounterClockwise(pol); //take O(N)
+            bool check = CheckMonotone(pol); //take O(N)
+
+            for (int i = 0; i < pol.lines.Count; i++)
+                points.Add(pol.lines[i].Start);
+
+            //sort the points on max Y and max X on tie O(n)
+            List<Point> E = new List<Point>();
+            for (int i = 0; i < pol.lines.Count; i++)
+                E.Add(pol.lines[i].Start);
+            E.Sort(point_sort);
+
+            Stack<Point> S = new Stack<Point>();
+            S.Push(E[0]);
+            S.Push(E[1]);
+            int current = 2;
+
+            while (current != pol.lines.Count)
+            {
+                Point p = E[current];
+                Point top = S.Peek();
+                //Assume E[0].X this is the value which detemines the left and the right side
+                // E[current].X < E[0].X the current point lies in the left side
+                // E[current].X > E[0].X the current point lies in the right side
+                bool same_side = false;
+                if (p.X < E[0].X && top.X < E[0].X)
+                    same_side = true;
+                else if (p.X > E[0].X && top.X > E[0].X)
+                    same_side = true;
+
+                // P and Top on the same side 
+                if (same_side == true)
+                {
+                    S.Pop();
+                    Point top2 = S.Peek();
+
+                    //Check the top point is convex or not
+                    int index = points.IndexOf(top);
+                    if (IsConvex(pol, index) == true)
+                    {
+                        outLines.Add(new Line(p, top2));
+                        if (S.Count == 1)
+                        {
+                            S.Push(p);
+                            current++;
+                        }
+                    }
+                    else
+                    {
+                        S.Push(top);
+                        S.Push(p);
+                        current++;
+                    }
+                }
+                //P and Top on different side 
+                else
+                {
+                    while (S.Count != 1)
+                    {
+                        Point top2 = S.Pop();
+                        outLines.Add(new Line(p, top2));
+                    }
+                    S.Pop();
+                    S.Push(top);
+                    S.Push(p);
+                }
+            }
         }
 
         //Check the orientation of the polygon
@@ -37,102 +104,33 @@ namespace CGAlgorithms.Algorithms.PolygonTriangulation
             return pol;
         }
 
-        //Inserte Diagonals
-        public List<Line> Inserting_Diagonals(Polygon Polygon)
+        //Check Monotone: this function return true if and only if no cusp points
+        public bool CheckMonotone(Polygon pol)
         {
-            //lines in triangels
-            List<Line> outputDiagonals = new List<Line>();
+            // the count to determine the number of cusp points
+            int count = 0;
 
-            if (Polygon.lines.Count <= 3)
-                return outputDiagonals;
-
-            int Current = 0;
-            while (true)
+            for (int i = 0; i < pol.lines.Count; i++)
             {
-                if (IsConvex(Polygon, Current) == true)
-                    break;
-                else
-                    Current++;
+
+                int previous = ((i - 1) + pol.lines.Count) % pol.lines.Count;
+                int next = (i + 1) % pol.lines.Count;
+
+                Point p = pol.lines[i].Start;
+                Point prev_p = pol.lines[previous].Start;
+                Point next_p = pol.lines[next].Start;
+
+                //the two edges lie in the same side and the angle > 180
+                if (next_p.Y < p.Y && prev_p.Y < p.Y && !IsConvex(pol, i))
+                    count++;
+                else if (next_p.Y > p.Y && prev_p.Y > p.Y && !IsConvex(pol, i))
+                    count++;
             }
 
-            int previous = ((Current - 1) + Polygon.lines.Count) % Polygon.lines.Count;
-            int next = (Current + 1) % Polygon.lines.Count;
+            if (count == 0)
+                return true;
 
-            Point p1 = Polygon.lines[previous].Start;
-            Point p2 = Polygon.lines[Current].Start;
-            Point p3 = Polygon.lines[next].Start;
-
-            //to calculate the number of the points inside the triangle (cprev, c, cnext)
-            List<Point> points_in_triangle = new List<Point>();
-            for (int i = 0; i < Polygon.lines.Count; i++)
-            {
-                Point po = Polygon.lines[i].Start;
-                if (HelperMethods.PointInTriangle(po, p1, p2, p3) == Enums.PointInPolygon.Inside)
-                    points_in_triangle.Add(po);
-            }
-
-            //no points in the triangle
-            Line l;
-            if (points_in_triangle.Count == 0)
-            {
-                l = new Line(p1, p3);
-                outputDiagonals.Add(l);
-            }
-
-            else
-            {
-                //to calculate the max distance between the inside point in the triangle and the line (c.prev, c.next) 
-                List<double> distances = new List<double>();
-                for (int i = 0; i < points_in_triangle.Count; i++)
-                    distances.Add(distance(p1, p3, points_in_triangle[i]));
-
-                int MaxDistantPoint = distances.IndexOf(distances.Max());
-                l = new Line(p2, points_in_triangle[MaxDistantPoint]);
-                outputDiagonals.Add(l);
-            }
-
-            //Divide the polygon to 2 subpolygons
-            Polygon po1, po2;
-            List<Line> lines1 = new List<Line>();
-            List<Line> lines2 = new List<Line>();
-            int start = 0, end = 0;
-            for (int i = 0; i < Polygon.lines.Count; i++)
-            {
-                if (Polygon.lines[i].Start.Equals(l.Start))
-                    start = i;
-                if (Polygon.lines[i].Start.Equals(l.End))
-                    end = i;
-            }
-
-            int go = start;
-            while (true)
-            {
-                if (go == end)
-                    break;
-                lines1.Add(Polygon.lines[go]);
-            }
-            lines1.Add(new Line(l.End, l.Start));
-            po1 = new Polygon(lines1);
-
-            go = end;
-            while (true)
-            {
-                if (go == start)
-                    break;
-                lines2.Add(Polygon.lines[go]);
-            }
-            lines2.Add(new Line(l.Start, l.End));
-            po2 = new Polygon(lines2);
-
-            List<Line> Result1 = new List<Line>();
-            List<Line> Result2 = new List<Line>();
-
-            Result1 = Inserting_Diagonals(po1);
-            Result2 = Inserting_Diagonals(po2);
-
-            List<Line> Result = new List<Line>();
-            Result = Result1.Concat(Result2).ToList();
-            return Result;
+            return false;
         }
 
         //Check Convex point 
@@ -150,18 +148,18 @@ namespace CGAlgorithms.Algorithms.PolygonTriangulation
             return false;
         }
 
-        //Calculate the distance between line(p1,p2) and point p0
-        public double distance(Point p1, Point p2, Point p0)
+        //sort the points on max Y and max X on tie O(n)
+        public static int point_sort(Point a, Point b)
         {
-            double result;
-            result = Math.Abs(((p2.X - p1.X) * (p1.Y - p0.Y)) - ((p1.X - p0.X) * (p2.Y - p1.Y)));
-            result /= Math.Sqrt(Math.Pow(p2.X - p1.X, 2) + Math.Pow(p2.Y - p1.Y, 2));
-            return result;
+            if (a.Y == b.Y)
+                return -a.X.CompareTo(b.X);
+            else
+                return -a.Y.CompareTo(b.Y);
         }
 
         public override string ToString()
         {
-            return "Inserting Diagonals";
+            return "Monotone Triangulation";
         }
     }
 }
