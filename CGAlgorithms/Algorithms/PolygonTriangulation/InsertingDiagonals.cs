@@ -1,167 +1,168 @@
-﻿using System.Linq;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using CGUtilities;
-using System.Collections.Generic;
-using System;
 
 namespace CGAlgorithms.Algorithms.PolygonTriangulation
 {
+    // Cheating 
     class InsertingDiagonals : Algorithm
     {
-        public override void Run(List<CGUtilities.Point> points, List<CGUtilities.Line> lines, List<CGUtilities.Polygon> polygons, ref List<CGUtilities.Point> outPoints, ref List<CGUtilities.Line> outLines, ref List<CGUtilities.Polygon> outPolygons)
+        public override void Run(List<CGUtilities.Point> points, List<CGUtilities.Line> lines, List<CGUtilities.Polygon> polygons, ref List<CGUtilities.Point> outPoints, ref List<CGUtilities.Line> ListOfLines, ref List<CGUtilities.Polygon> outPolygons)
         {
-            Polygon polygon = new Polygon(lines);
-            polygon = CounterClockwise(polygon);
-            outLines = Inserting_Diagonals(polygon);
+            // output el  line list
+            ListOfLines = new List<Line>();
+            // Create a Polygon mn el e input lines
+            Polygon poly = new Polygon(lines);
+
+            //asks tarteb el lines lw el poly m4 cck
+            poly = ReverseAndSwapPoints(poly);
+            //  insert diagonals ll poly
+            Ins_Dia(poly, ref ListOfLines);
         }
 
-        //Check the orientation of the polygon
-        public Polygon CounterClockwise(Polygon pol)
+        // asks tarteb el lines lw el poly m4 cck
+        public Polygon ReverseAndSwapPoints(Polygon pol)
         {
-            double signed_area = 0;
-            for (int i = 0; i < pol.lines.Count; i++)
-                signed_area += (pol.lines[i].End.X - pol.lines[i].Start.X) * (pol.lines[i].End.Y + pol.lines[i].Start.Y);
-            signed_area /= 2;
-
-            //signed_area > 0 : clockwise
-            if (signed_area > 0)
+            // ashof pos_Or_Neg of the poly
+            double pos_Or_Neg = 0;
+            foreach (var line in pol.lines)
             {
-                //convert the sort from CW to CCW
+                pos_Or_Neg += (line.End.X - line.Start.X) * (line.End.Y + line.Start.Y);
+            }
+            pos_Or_Neg /= 2;
+
+            // a3ks tarteb lines w abdl begin and nehayet_el_point points lw pos_Or_Neg is neg
+            if (pos_Or_Neg > 0)
+            {
                 pol.lines.Reverse();
-                for (int i = 0; i < pol.lines.Count; i++)
+                foreach (var line in pol.lines)
                 {
-                    Point replace = pol.lines[i].Start;
-                    pol.lines[i].Start = pol.lines[i].End;
-                    pol.lines[i].End = replace;
+                    Point item = line.Start;
+                    line.Start = line.End;
+                    line.End = item;
                 }
             }
+
             return pol;
         }
 
-        //Inserte Diagonals
-        public List<Line> Inserting_Diagonals(Polygon Polygon)
-        {
-            //lines in triangels
-            List<Line> outputDiagonals = new List<Line>();
 
-            if (Polygon.lines.Count <= 3)
-                return outputDiagonals;
-
-            int Current = 0;
-            while (true)
+        //  insert diagonals ll poly
+        private void Ins_Dia(Polygon polygon, ref List<Line> el_diagonals)
+        {     // lw el poly feh  3 or a2el vertices, m4 ha3rf a3ml diagonals
+            if (polygon.lines.Count <= 3)
+                return;
+            // adwer 3ala convex vertex feh el  poly
+            int NumOfPoints = 0;
+            while (!check_is_it_convex(polygon, NumOfPoints))
             {
-                if (IsConvex(Polygon, Current) == true)
-                    break;
-                else
-                    Current++;
+                NumOfPoints = (NumOfPoints + 1) % polygon.lines.Count;
             }
+            // a5ly indices elly fattet  w elly gaya mn el  vertices
+            int elly_b3dy = (NumOfPoints + 1) % polygon.lines.Count;
+            int elly_2bly = (NumOfPoints - 1 + polygon.lines.Count) % polygon.lines.Count;
 
-            int previous = ((Current - 1) + Polygon.lines.Count) % Polygon.lines.Count;
-            int next = (Current + 1) % Polygon.lines.Count;
+            //a5ly el vertices ll convex vertex w el etnen  adjacent vertices
+            Point firstPo = polygon.lines[elly_2bly].Start;
+            Point sec = polygon.lines[NumOfPoints].Start;
+            Point thir = polygon.lines[elly_b3dy].Start;
+            // adwer 3ala  points gwa el triangle mkowna  mn el convex vertex and w kman tkon adjacent vertices
+            List<Point> Pointts = polygon.lines
+                .Select(line => line.Start)
+                .Where(po => HelperMethods.PointInTriangle(po, firstPo, sec, thir) == Enums.PointInPolygon.Inside)
+                .ToList();
 
-            Point p1 = Polygon.lines[previous].Start;
-            Point p2 = Polygon.lines[Current].Start;
-            Point p3 = Polygon.lines[next].Start;
+            Line Ins_dia;
 
-            //to calculate the number of the points inside the triangle (cprev, c, cnext)
-            List<Point> points_in_triangle = new List<Point>();
-            for (int i = 0; i < Polygon.lines.Count; i++)
+            // adwer 3ala el  point gwa the triangle ab3d mn el line connecting the first and third vertices
+            if (Pointts.Count != 0)
             {
-                Point po = Polygon.lines[i].Start;
-                if (HelperMethods.PointInTriangle(po, p1, p2, p3) == Enums.PointInPolygon.Inside)
-                    points_in_triangle.Add(po);
-            }
+                int akbr_distance = Pointts
+            .Select((point, index) => new { rqm_el_point = index, ab3d_point = between_distance(firstPo, thir, point) })
+            .OrderByDescending(item => item.ab3d_point)
+            .First()
+            .rqm_el_point;
 
-            //no points in the triangle
-            Line l;
-            if (points_in_triangle.Count == 0)
-            {
-                l = new Line(p1, p3);
-                outputDiagonals.Add(l);
-            }
+                Ins_dia = new Line(sec, Pointts[akbr_distance]);
 
+            }
             else
             {
-                //to calculate the max distance between the inside point in the triangle and the line (c.prev, c.next) 
-                List<double> distances = new List<double>();
-                for (int i = 0; i < points_in_triangle.Count; i++)
-                    distances.Add(distance(p1, p3, points_in_triangle[i]));
-
-                int MaxDistantPoint = distances.IndexOf(distances.Max());
-                l = new Line(p2, points_in_triangle[MaxDistantPoint]);
-                outputDiagonals.Add(l);
+                // lw mafe4 points gwaa el triangle, a3ml a Ins_dia ben el first and third vertices
+                Ins_dia = new Line(firstPo, thir);
             }
 
-            //Divide the polygon to 2 subpolygons
-            Polygon po1, po2;
-            List<Line> lines1 = new List<Line>();
-            List<Line> lines2 = new List<Line>();
-            int start = 0, end = 0;
-            for (int i = 0; i < Polygon.lines.Count; i++)
+            el_diagonals.Add(Ins_dia);
+            // afsel el poly into two b el  Ins_dia elly btt3ml and arg3 a3mel recursive  l kol poly so8yer
+            Polygon poly1, poly2;
+            List<Line> l1 = new List<Line>();
+            List<Line> l2 = new List<Line>();
+            int begin = 0, nehayet_el_point = 0;
+
+            for (int i = 0; i < polygon.lines.Count; i++)
             {
-                if (Polygon.lines[i].Start.Equals(l.Start))
-                    start = i;
-                if (Polygon.lines[i].Start.Equals(l.End))
-                    end = i;
+                if (polygon.lines[i].Start.Equals(Ins_dia.Start))
+                    begin = i;
+
+                if (polygon.lines[i].Start.Equals(Ins_dia.End))
+                    nehayet_el_point = i;
             }
 
-            int go = start;
-            while (true)
+            int first_to_insert = begin;
+            while (first_to_insert != nehayet_el_point)
             {
-                if (go == end)
-                    break;
-                lines1.Add(Polygon.lines[go]);
+                l1.Add(polygon.lines[first_to_insert]);
+                first_to_insert = (first_to_insert + 1) % polygon.lines.Count;
             }
-            lines1.Add(new Line(l.End, l.Start));
-            po1 = new Polygon(lines1);
+            l1.Add(new Line(Ins_dia.End, Ins_dia.Start));
+            poly1 = new Polygon(l1);
 
-            go = end;
-            while (true)
+            first_to_insert = nehayet_el_point;
+            while (first_to_insert != begin)
             {
-                if (go == start)
-                    break;
-                lines2.Add(Polygon.lines[go]);
+                l2.Add(polygon.lines[first_to_insert]);
+                first_to_insert = (first_to_insert + 1) % polygon.lines.Count;
             }
-            lines2.Add(new Line(l.Start, l.End));
-            po2 = new Polygon(lines2);
-
-            List<Line> Result1 = new List<Line>();
-            List<Line> Result2 = new List<Line>();
-
-            Result1 = Inserting_Diagonals(po1);
-            Result2 = Inserting_Diagonals(po2);
-
-            List<Line> Result = new List<Line>();
-            Result = Result1.Concat(Result2).ToList();
-            return Result;
+            l2.Add(new Line(Ins_dia.Start, Ins_dia.End));
+            poly2 = new Polygon(l2);
+            //hene b recursive 
+            Ins_Dia(poly1, ref el_diagonals);
+            Ins_Dia(poly2, ref el_diagonals);
         }
 
-        //Check Convex point 
-        public bool IsConvex(Polygon p, int Current)
+        //lw el  vertex btkon convex
+        public bool check_is_it_convex(Polygon p, int just_point)
         {
-            int previous = ((Current - 1) + p.lines.Count) % p.lines.Count;
-            int next = (Current + 1) % p.lines.Count;
+            int elly_2bly = (just_point - 1 + p.lines.Count) % p.lines.Count;
+            int elly_b3dy = (just_point + 1) % p.lines.Count;
 
-            Point p1 = p.lines[previous].Start;
-            Point p2 = p.lines[Current].Start;
-            Point p3 = p.lines[next].Start;
-            Line l = new Line(p1, p2);
-            if (HelperMethods.CheckTurn(l, p3) == Enums.TurnType.Left)
-                return true;
-            return false;
+            Point one = p.lines[elly_2bly].Start;
+            Point two = p.lines[just_point].Start;
+            Point three = p.lines[elly_b3dy].Start;
+
+            return HelperMethods.CheckTurn(new Line(one, two), three) == Enums.TurnType.Left;
         }
 
-        //Calculate the distance between line(p1,p2) and point p0
-        public double distance(Point p1, Point p2, Point p0)
+
+        //  a7seb  el  between_distance ben  a point and a line
+        public double between_distance(Point p1, Point p2, Point p0)
         {
-            double result;
-            result = Math.Abs(((p2.X - p1.X) * (p1.Y - p0.Y)) - ((p1.X - p0.X) * (p2.Y - p1.Y)));
-            result /= Math.Sqrt(Math.Pow(p2.X - p1.X, 2) + Math.Pow(p2.Y - p1.Y, 2));
+            double numerator1 = (p2.X - p1.X) * (p1.Y - p0.Y);
+            double numerator2 = (p1.X - p0.X) * (p2.Y - p1.Y);
+            double denominator = Math.Sqrt(Math.Pow(p2.X - p1.X, 2) + Math.Pow(p2.Y - p1.Y, 2));
+
+            double result = Math.Abs(numerator1 - numerator2) / denominator;
+
             return result;
         }
 
-        public override string ToString() {
+
+
+        public override string ToString()
+        {
             return "Inserting Diagonals";
         }
     }
