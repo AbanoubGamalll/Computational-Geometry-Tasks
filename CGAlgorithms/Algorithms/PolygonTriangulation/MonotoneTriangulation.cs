@@ -9,152 +9,105 @@ namespace CGAlgorithms.Algorithms.PolygonTriangulation
 {
     class MonotoneTriangulation : Algorithm
     {
-        public override void Run(List<Point> points, List<Line> lines, List<Polygon> polygons, ref List<Point> outPoints, ref List<Line> outLines, ref List<Polygon> outPolygons)
+        public static int point_sort(Point a, Point b)
         {
-            Polygon pol = new Polygon(lines);
-            pol = CounterClockwise(pol); //take O(N)
-            bool check = CheckMonotone(pol); //take O(N)
+            if (a.Y != b.Y)
+                return -a.Y.CompareTo(b.Y);
+            else
+                return -a.X.CompareTo(b.X);
+        }
+        public override void Run(System.Collections.Generic.List<CGUtilities.Point> points, System.Collections.Generic.List<CGUtilities.Line> lines, System.Collections.Generic.List<CGUtilities.Polygon> polygons, ref System.Collections.Generic.List<CGUtilities.Point> outPoints, ref System.Collections.Generic.List<CGUtilities.Line> outLines, ref System.Collections.Generic.List<CGUtilities.Polygon> outPolygons)
+        {
+            List<Point> SortingTriangle = new List<Point>();
+            Stack<Point> PushAndPop = new Stack<Point>();
 
-            for (int i = 0; i < pol.lines.Count; i++)
-                points.Add(pol.lines[i].Start);
+            Polygon triangle = new Polygon(lines);
 
-            //sort the points on max Y and max X on tie O(n)
-            List<Point> E = new List<Point>();
-            for (int i = 0; i < pol.lines.Count; i++)
-                E.Add(pol.lines[i].Start);
-            E.Sort(point_sort);
-
-            Stack<Point> S = new Stack<Point>();
-            S.Push(E[0]);
-            S.Push(E[1]);
-            int current = 2;
-
-            while (current != pol.lines.Count)
+            int TriangleCount = triangle.lines.Count;
+            int LenghQueue = 2;
+            //add point then sorting 
+            for (int i = 0; i < TriangleCount; i++)
             {
-                Point p = E[current];
-                Point top = S.Peek();
-                //Assume E[0].X this is the value which detemines the left and the right side
-                // E[current].X < E[0].X the current point lies in the left side
-                // E[current].X > E[0].X the current point lies in the right side
-                bool same_side = false;
-                if (p.X < E[0].X && top.X < E[0].X)
-                    same_side = true;
-                else if (p.X > E[0].X && top.X > E[0].X)
-                    same_side = true;
+                points.Add(triangle.lines[i].Start);
+                SortingTriangle.Add(triangle.lines[i].Start);
+            }
+            SortingTriangle.Sort(point_sort);
 
-                // P and Top on the same side 
-                if (same_side == true)
+            //push first and second point
+            for (int x = 0; x <= 1; x++)
+            {
+                PushAndPop.Push(SortingTriangle[x]);
+            }
+
+            while (LenghQueue != TriangleCount)
+            {
+                Point top = PushAndPop.Peek();
+                Point End = SortingTriangle[LenghQueue];
+                bool OneArea = false;
+                if ((End.X < SortingTriangle[0].X && top.X < SortingTriangle[0].X) || (End.X > SortingTriangle[0].X && top.X > SortingTriangle[0].X))
                 {
-                    S.Pop();
-                    Point top2 = S.Peek();
+                    //thats mean all in same site
+                    OneArea = true;
+                }
+                else if ((End.X < SortingTriangle[0].X && top.X > SortingTriangle[0].X) || (End.X > SortingTriangle[0].X && top.X < SortingTriangle[0].X))
+                {
+                    //thats mean all not same site
+                    OneArea = false;
+                }
+                // P and Top on the same side 
+                if (OneArea == true)
+                {
+                    PushAndPop.Pop();
+                    Point top2 = PushAndPop.Peek();
 
                     //Check the top point is convex or not
-                    int index = points.IndexOf(top);
-                    if (IsConvex(pol, index) == true)
+                    if (DrawLine(triangle, points.IndexOf(top)) != true)
                     {
-                        outLines.Add(new Line(p, top2));
-                        if (S.Count == 1)
-                        {
-                            S.Push(p);
-                            current++;
-                        }
+                        PushAndPop.Push(top);
+                        PushAndPop.Push(End);
+                        LenghQueue++;
+
                     }
                     else
                     {
-                        S.Push(top);
-                        S.Push(p);
-                        current++;
+                        outLines.Add(new Line(End, top2));
+                        if (PushAndPop.Count == 1)
+                        {
+                            PushAndPop.Push(End);
+                            LenghQueue++;
+                        }
                     }
                 }
                 //P and Top on different side 
                 else
                 {
-                    while (S.Count != 1)
+                    while (PushAndPop.Count != 1)
                     {
-                        Point top2 = S.Pop();
-                        outLines.Add(new Line(p, top2));
+                        Point top2 = PushAndPop.Pop();
+                        outLines.Add(new Line(End, top2));
                     }
-                    S.Pop();
-                    S.Push(top);
-                    S.Push(p);
+                    PushAndPop.Pop();
+                    PushAndPop.Push(top);
+                    PushAndPop.Push(End);
+
                 }
             }
         }
-
-        //Check the orientation of the polygon
-        public Polygon CounterClockwise(Polygon pol)
-        {
-            double signed_area = 0;
-            for (int i = 0; i < pol.lines.Count; i++)
-                signed_area += (pol.lines[i].End.X - pol.lines[i].Start.X) * (pol.lines[i].End.Y + pol.lines[i].Start.Y);
-            signed_area /= 2;
-
-            //signed_area > 0 : clockwise
-            if (signed_area > 0)
-            {
-                //convert the sort from CW to CCW
-                pol.lines.Reverse();
-                for (int i = 0; i < pol.lines.Count; i++)
-                {
-                    Point replace = pol.lines[i].Start;
-                    pol.lines[i].Start = pol.lines[i].End;
-                    pol.lines[i].End = replace;
-                }
-            }
-            return pol;
-        }
-
-        //Check Monotone: this function return true if and only if no cusp points
-        public bool CheckMonotone(Polygon pol)
-        {
-            // the count to determine the number of cusp points
-            int count = 0;
-
-            for (int i = 0; i < pol.lines.Count; i++)
-            {
-
-                int previous = ((i - 1) + pol.lines.Count) % pol.lines.Count;
-                int next = (i + 1) % pol.lines.Count;
-
-                Point p = pol.lines[i].Start;
-                Point prev_p = pol.lines[previous].Start;
-                Point next_p = pol.lines[next].Start;
-
-                //the two edges lie in the same side and the angle > 180
-                if (next_p.Y < p.Y && prev_p.Y < p.Y && !IsConvex(pol, i))
-                    count++;
-                else if (next_p.Y > p.Y && prev_p.Y > p.Y && !IsConvex(pol, i))
-                    count++;
-            }
-
-            if (count == 0)
-                return true;
-
-            return false;
-        }
-
         //Check Convex point 
-        public bool IsConvex(Polygon p, int Current)
+        public bool DrawLine(Polygon p, int POINT)
         {
-            int previous = ((Current - 1) + p.lines.Count) % p.lines.Count;
-            int next = (Current + 1) % p.lines.Count;
+            int last = ((POINT - 1) + p.lines.Count) % p.lines.Count;
+            int next = (POINT + 1) % p.lines.Count;
 
-            Point p1 = p.lines[previous].Start;
-            Point p2 = p.lines[Current].Start;
+            Point p1 = p.lines[last].Start;
+            Point p2 = p.lines[POINT].Start;
             Point p3 = p.lines[next].Start;
             Line l = new Line(p1, p2);
             if (HelperMethods.CheckTurn(l, p3) == Enums.TurnType.Left)
+            {
                 return true;
+            }
             return false;
-        }
-
-        //sort the points on max Y and max X on tie O(n)
-        public static int point_sort(Point a, Point b)
-        {
-            if (a.Y == b.Y)
-                return -a.X.CompareTo(b.X);
-            else
-                return -a.Y.CompareTo(b.Y);
         }
 
         public override string ToString()

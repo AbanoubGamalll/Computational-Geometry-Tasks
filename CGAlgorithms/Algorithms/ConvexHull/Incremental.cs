@@ -14,15 +14,17 @@ namespace CGAlgorithms.Algorithms.ConvexHull
             points.Sort((point1, point2) =>
             {
                 if (point1.X == point2.X) return point1.Y.CompareTo(point2.Y);
-                return point1.X.CompareTo(point2.X);
+                else return point1.X.CompareTo(point2.X);
             });
 
 
-            for (int i = 0; i < points.Count - 1; i++)
-                if (points[i].Equals(points[i + 1]))
-                    points.RemoveAt(i);
+            for (int i = 0; i < points.Count; i++)
+                for (int j = i + 1; j < points.Count - 1; j++)
+                    if (points[i].Equals(points[j]))
+                        points.RemoveAt(j);
 
-            int[] nxt = new int[points.Count], prv = new int[points.Count];
+            int[] nxt = new int[points.Count];
+            int[] prv = new int[points.Count];
 
             for (int i = 0, t; i < points.Count; i++)
             {

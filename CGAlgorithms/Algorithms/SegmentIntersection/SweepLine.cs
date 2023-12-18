@@ -1,179 +1,155 @@
-﻿using System;
+﻿using CGUtilities;
+using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace CGAlgorithms.Algorithms.SegmentIntersection
 {
     class SweepLine : Algorithm
     {
-        public override void Run(List<CGUtilities.Point> points, List<CGUtilities.Line> lines, List<CGUtilities.Polygon> polygons,
-            ref List<CGUtilities.Point> outPoints, ref List<CGUtilities.Line> outLines, ref List<CGUtilities.Polygon> outPolygons)
+        public override void Run(List<CGUtilities.Point> points, List<CGUtilities.Line> lines, List<CGUtilities.Polygon> polygons, ref List<CGUtilities.Point> outPoints, ref List<CGUtilities.Line> outLines, ref List<CGUtilities.Polygon> outPolygons)
         {
-            // Combine points and lines for sorting
-            List<EventPoint> eventPoints = new List<EventPoint>();
+            var endpoints = GetSortedEndpoints(lines);
 
-            foreach (var point in points)
+            //initialized to store the currently active line segments
+            var activeSegments = new List<CGUtilities.Line>();
+
+            foreach (var endpoint in endpoints)
             {
-                eventPoints.Add(new EventPoint(point, EventType.Point));
-            }
-
-            foreach (var line in lines)
-            {
-                eventPoints.Add(new EventPoint(line.Start, EventType.Start, line));
-                eventPoints.Add(new EventPoint(line.End, EventType.End, line));
-            }
-
-            // Sort event points based on x-coordinate
-            eventPoints.Sort();
-
-            // Active set to keep track of lines intersecting the sweep line
-            SortedSet<CGUtilities.Line> activeSet = new SortedSet<CGUtilities.Line>(new LineComparer());
-
-            foreach (var eventPoint in eventPoints)
-            {
-                switch (eventPoint.Type)
+                if (endpoint.IsLeft)
                 {
-                    case EventType.Point:
-                        // Handle point event
-                        // You can implement specific logic for point events if needed
-                        break;
-
-                    case EventType.Start:
-                        // Handle start event
-                        activeSet.Add(eventPoint.Line);
-                        break;
-
-                    case EventType.End:
-                        // Handle end event
-                        activeSet.Remove(eventPoint.Line);
-                        break;
+                    //if it represents the left endpoint of a line segment, the segment is added to the activeSegments
+                    AddSegmentToActiveList(endpoint.Segment, activeSegments);
+                    //the algorithm checks for intersections between the newly added segment and the other active segments
+                    CheckAndAddIntersections(endpoint.Segment, activeSegments, ref outPoints, ref outLines);
                 }
-
-                // Check for intersection among active lines
-                CheckIntersections(activeSet.ToList(), ref outPoints, ref outLines);
+                else
+                {
+                    RemoveSegmentFromActiveList(endpoint.Segment, activeSegments);
+                }
             }
-
+        }
+        //the input list of lines and returns a sorted list of endpoints
+        //Each endpoint represents the start or end point of a line segment.
+        private List<Endpoint> GetSortedEndpoints(List<CGUtilities.Line> lines)
+        {
+            var endpoints = lines.SelectMany(line => new[]
+            {
+                new Endpoint(line.Start, line, true),
+                new Endpoint(line.End, line, false)
+            }).OrderBy(endpoint => endpoint.Point.X).ToList();
+            return endpoints;
         }
 
-        private void CheckIntersections(List<CGUtilities.Line> activeSet, ref List<CGUtilities.Point> outPoints, ref List<CGUtilities.Line> outLines)
+        private void AddSegmentToActiveList(CGUtilities.Line segment, List<CGUtilities.Line> activeSegments)
         {
-            for (int i = 0; i < activeSet.Count - 1; i++)
+            activeSegments.Add(segment);
+        }
+
+        private void RemoveSegmentFromActiveList(CGUtilities.Line segment, List<CGUtilities.Line> activeSegments)
+        {
+            activeSegments.Remove(segment);
+        }
+
+        private void CheckAndAddIntersections(CGUtilities.Line segment, List<CGUtilities.Line> activeSegments, ref List<CGUtilities.Point> outPoints, ref List<CGUtilities.Line> outLines)
+        {
+            foreach (var activeSegment in activeSegments)
             {
-                for (int j = i + 1; j < activeSet.Count; j++)
+                //checks if the current segment intersects with each active segment.
+                if (IfSegmentsIntersect(segment, activeSegment))
                 {
-                    if (DoIntersect(activeSet[i].Start, activeSet[i].End, activeSet[j].Start, activeSet[j].End))
-                    {
-                        // Intersection found, add it to the result
-                        CGUtilities.Point intersectionPoint = ComputeIntersectionPoint(activeSet[i].Start, activeSet[i].End, activeSet[j].Start, activeSet[j].End);
-                        outPoints.Add(intersectionPoint);
-                        outLines.Add(new CGUtilities.Line(activeSet[i].Start, intersectionPoint));
-                        outLines.Add(new CGUtilities.Line(activeSet[j].Start, intersectionPoint));
-                    }
+                    var intersection = ComputeIntersection(segment, activeSegment);
+                    AddUniqueIntersectionPoint(intersection, ref outPoints);
+                    AddUniqueIntersectionSegments(segment, activeSegment, ref outLines);
                 }
             }
         }
 
-        // Check if two line segments intersect
-        private bool DoIntersect(CGUtilities.Point p1, CGUtilities.Point q1, CGUtilities.Point p2, CGUtilities.Point q2)
+        private void AddUniqueIntersectionPoint(CGUtilities.Point intersection, ref List<CGUtilities.Point> outPoints)
         {
-            int o1 = Orientation(p1, q1, p2);
-            int o2 = Orientation(p1, q1, q2);
-            int o3 = Orientation(p2, q2, p1);
-            int o4 = Orientation(p2, q2, q1);
-
-            if (o1 != o2 && o3 != o4)
-                return true;
-
-            // Special cases
-            if (o1 == 0 && OnSegment(p1, p2, q1)) return true;
-            if (o2 == 0 && OnSegment(p1, q2, q1)) return true;
-            if (o3 == 0 && OnSegment(p2, p1, q2)) return true;
-            if (o4 == 0 && OnSegment(p2, q1, q2)) return true;
-
-            return false;
+            //checks if an intersection point already exists in the outPoints list before adding it. 
+            if (intersection != null && !outPoints.Any(p => p.Equals(intersection)))
+            {
+                outPoints.Add(intersection);
+            }
         }
 
-        // Find the orientation of three points (colinear, clockwise, or counterclockwise)
-        private int Orientation(CGUtilities.Point p, CGUtilities.Point q, CGUtilities.Point r)
+        private void AddUniqueIntersectionSegments(CGUtilities.Line segment1, CGUtilities.Line segment2, ref List<CGUtilities.Line> outLines)
         {
-            double val = (q.Y - p.Y) * (r.X - q.X) - (q.X - p.X) * (r.Y - q.Y);
-
-            if (val == 0) return 0;  // colinear
-            return (val > 0) ? 1 : 2; // clockwise or counterclockwise
+            outLines.Add(segment1);
+            outLines.Add(segment2);
         }
 
-        // Check if point q lies on line segment p-r
-        private bool OnSegment(CGUtilities.Point p, CGUtilities.Point q, CGUtilities.Point r)
+        private bool IfSegmentsIntersect(Line segment1, Line segment2)
         {
-            return q.X <= Math.Max(p.X, r.X) && q.X >= Math.Min(p.X, r.X) &&
-                    q.Y <= Math.Max(p.Y, r.Y) && q.Y >= Math.Min(p.Y, r.Y);
+            var dir1 = HelperMethods.CheckTurn(GetVector(segment1.End, segment1.Start), GetVector(segment2.Start, segment1.Start));
+            var dir2 = HelperMethods.CheckTurn(GetVector(segment1.End, segment1.Start), GetVector(segment2.End, segment1.Start));
+
+            return (dir1 == Enums.TurnType.Right && dir2 == Enums.TurnType.Left) ||
+                   (dir1 == Enums.TurnType.Left && dir2 == Enums.TurnType.Right);
         }
 
-        // Compute the intersection point of two line segments
-        private CGUtilities.Point ComputeIntersectionPoint(CGUtilities.Point p1, CGUtilities.Point q1, CGUtilities.Point p2, CGUtilities.Point q2)
+        private Point GetVector(Point point1, Point point2)
         {
-            double A1 = q1.Y - p1.Y;
-            double B1 = p1.X - q1.X;
-            double C1 = A1 * p1.X + B1 * p1.Y;
-
-            double A2 = q2.Y - p2.Y;
-            double B2 = p2.X - q2.X;
-            double C2 = A2 * p2.X + B2 * p2.Y;
-
-            double determinant = A1 * B2 - A2 * B1;
-
-            double x = (B2 * C1 - B1 * C2) / determinant;
-            double y = (A1 * C2 - A2 * C1) / determinant;
-
-            return new CGUtilities.Point(x, y);
+            return new Point(point1.X - point2.X, point1.Y - point2.Y);
         }
+
+
+        private Point ComputeIntersection(Line segment1, Line segment2)
+        {
+            //the segments lie on the same straight line.
+            if (HelperMethods.CheckTurn(segment1, segment2.Start) == Enums.TurnType.Colinear)
+            {
+                return null;
+            }
+
+            //direction vectors of the two line segments
+            var dir1 = GetVector(segment1.End, segment1.Start);
+            var dir2 = GetVector(segment2.End, segment2.Start);
+            //represents the difference between the start points of the two line segments.
+            var diff = GetVector(segment2.Start, segment1.Start);
+
+            //These parameters are used to determine the intersection point.
+            var t1 = HelperMethods.CrossProduct(diff, dir2) / HelperMethods.CrossProduct(dir1, dir2);
+            var t2 = HelperMethods.CrossProduct(diff, dir1) / HelperMethods.CrossProduct(dir1, dir2);
+
+            if (t1 >= 0 && t1 <= 1 && t2 >= 0 && t2 <= 1)
+            {
+                //if t1 and t2 are within valid ranges.
+                return CalculateIntersectionPoint(segment1, t1);
+            }
+
+            return null;
+        }
+
+        private static Point CalculateIntersectionPoint(Line segment, double t)
+        {
+            var intersectionX = segment.Start.X + t * (segment.End.X - segment.Start.X);
+            var intersectionY = segment.Start.Y + t * (segment.End.Y - segment.Start.Y);
+            return new Point(intersectionX, intersectionY);
+        }
+
+
+
 
         public override string ToString()
         {
             return "Sweep Line";
         }
-
-        // Event types for sorting
-        private enum EventType
-        {
-            Point,
-            Start,
-            End
-        }
-
-        // Class to represent event points
-        private class EventPoint : IComparable<EventPoint>
-        {
-            public CGUtilities.Point Point { get; }
-            public EventType Type { get; }
-            public CGUtilities.Line Line { get; }
-
-            public EventPoint(CGUtilities.Point point, EventType type, CGUtilities.Line line = null)
-            {
-                Point = point;
-                Type = type;
-                Line = line;
-            }
-
-            public int CompareTo(EventPoint other)
-            {
-                return Point.X.CompareTo(other.Point.X);
-            }
-        }
-
-        // Comparer for sorting active set based on y-coordinate
-        private class LineComparer : IComparer<CGUtilities.Line>
-        {
-            public int Compare(CGUtilities.Line x, CGUtilities.Line y)
-            {
-                if (x == null || y == null)
-                    throw new ArgumentNullException();
-
-                return x.Start.Y.CompareTo(y.Start.Y);
-            }
-        }
     }
 
+    class Endpoint
+    {
+        public CGUtilities.Point Point { get; }
+        public CGUtilities.Line Segment { get; }
+        public bool IsLeft { get; }
+
+        public Endpoint(CGUtilities.Point point, CGUtilities.Line segment, bool isLeft)
+        {
+            Point = point;
+            Segment = segment;
+            IsLeft = isLeft;
+        }
+    }
 }

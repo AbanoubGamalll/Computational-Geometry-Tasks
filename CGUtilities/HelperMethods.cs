@@ -82,9 +82,13 @@ namespace CGUtilities
             Point b = l.End.Vector(p);
             return HelperMethods.CheckTurn(a, b);
         }
+   
+
+      
         public static Point GetVector(Line l)
         {
             return l.Start.Vector(l.End);
         }
+      
     }
 }
